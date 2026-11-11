@@ -1,294 +1,265 @@
-// ===== 1. API KEY & MODELS =====
+// ===== 1. API KEY =====
+
 let API_KEY = localStorage.getItem('jarvis_key');
-function askForKey() {
-  const k = prompt('Enter your Gemini API Key:');
-  if (k) { API_KEY = k.trim(); localStorage.setItem('jarvis_key', API_KEY); }
-}
-if (!API_KEY) askForKey();
 
-const MODELS = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
-const RETRYABLE = /high demand|temporar|quota|rate|unavailable|deprecated|not found|overloaded/i;
-const MAX_MEMORY = 100; // messages kept in storage
-const CONTEXT_MSGS = 12; // messages sent to the model
+if(!API_KEY) { API_KEY = prompt('Enter your Gemini API Key:'); if (API_KEY)
 
-// ===== 2. MEMORY =====
+localStorage.setItem('jarvis_key', API_KEY); }
+
+const MODELS = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"];
+
+// ===== 2. MEMORY=====
+
 let MEMORY = [];
-try { MEMORY = JSON.parse(localStorage.getItem('jarvis_memory') || '[]'); } catch (e) { MEMORY = []; }
 
-function saveMemory() {
-  if (MEMORY.length > MAX_MEMORY) MEMORY = MEMORY.slice(-MAX_MEMORY);
-  try { localStorage.setItem('jarvis_memory', JSON.stringify(MEMORY)); } catch (e) {}
-  updateStatus();
+try {
+
+const storedMemory = JSON.parse(localStorage.getItem('jarvis_memory') || '[]');
+
+if (Array.isArray (storedMemory)) {
+
+MEMORY = storedMemory.filter(m => m && (m.role === 'user' || m.role === 'model') && typeof m.text === 'string' && ! (m.role === 'model' && /(?: Your strong password: | ۵۴ strong
+
+password:)/i.test(m.text)));
+
+if (MEMORY.length !== storedMemory.length) localStorage.setItem('jarvis_memory',
+
+JSON.stringify(MEMORY));
+
+} else {
+
 }
 
-const chat = document.getElementById('chat');
-const input = document.getElementById('msg');
-const sendBtn = document.getElementById('send');
-const micBtn = document.getElementById('mic-btn');
-const clearBtn = document.getElementById('clear-btn');
-const camBtn = document.getElementById('cam-btn');
-const imgInput = document.getElementById('img-input');
+localStorage.removeItem('jarvis_memory');
 
-function add(text, who) {
-  const d = document.createElement('div');
-  d.className = 'msg ' + who;
-  d.innerText = text;
-  chat.appendChild(d);
-  chat.scrollTop = chat.scrollHeight;
-  return d; // so callers can update this exact bubble
+} catch (e) {
+
 }
 
-MEMORY.forEach(m =>
-  add((m.role === 'user' ? 'YOU: ' : 'J.A.R.V.I.S: ') + m.text, m.role === 'user' ? 'user' : 'ai'));
+localStorage.removeItem('jarvis_memory');
 
-// ===== 3. TOOLS (handled before Gemini) =====
-// Returns a reply string if a tool handled the request, otherwise null.
-async function tryTools(text) {
-  const t = text.toLowerCase();
+function saveMemory() { localStorage.setItem('jarvis_memory', JSON.stringify(MEMORY)); }
 
-  // 1. Time
-  if (/\b(what('?s| is) the time|current time|time now)\b|సమయం ఎంత/.test(t)) {
-    return 'It is ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + ', Boss.';
-  }
+const chat=document.getElementById('chat');
 
-  // 2. Date
-  if (/\b(today'?s date|what('?s| is) the date|what day)\b|తేదీ ఎంత/.test(t)) {
-    return 'Today is ' + new Date().toLocaleDateString('en-IN', {
-      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-    }) + '.';
-  }
+const input=document.getElementById('msg');
 
-  // 3. Timer
-  const m = t.match(/(\d+)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)/i);
-  if ((t.includes('timer') || t.includes('టైమర్')) && m) {
-    const amount = parseInt(m[1], 10);
-    const unit = m[2].toLowerCase();
-    const factor = /^(hours?|hrs?)/.test(unit) ? 3600000
-                 : /^(seconds?|secs?)/.test(unit) ? 1000
-                 : 60000;
-    setTimeout(() => {
-      const msg = `టైమర్ పూర్తైంది! ${amount} ${unit} అయ్యాయి.`;
-      add('J.A.R.V.I.S: ' + msg, 'ai');
-      speak(msg);
-    }, amount * factor);
-    return `Timer set for ${amount} ${unit}.`;
-  }
+const micBtn=document.getElementById('mic-btn');
 
-  // 4. Translate
-  if (t.includes('translate')) {
-    const q = text.replace(/translate (this )?/i, '').trim() || 'hello';
-    try {
-      const r = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(q) + '&langpair=en|te');
-      const d = await r.json();
-      if (!d.responseData || !d.responseData.translatedText) throw new Error('empty');
-      return 'In Telugu: ' + d.responseData.translatedText;
-    } catch (e) { return 'Translate error, Boss.'; }
-  }
+const clearBtn=document.getElementById('clear-btn');
 
-  // 5. YouTube Play (only when the message STARTS with play / youtube)
-  if (/^\s*(play|youtube)\b/i.test(text)) {
-    const q = text.replace(/^\s*(play|youtube)\s+(search\s+)?/i, '').trim();
-    if (q) {
-      const url = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
-      const w = window.open(url, '_blank');
-      return w ? 'Searching YouTube for ' + q + ', Boss.'
-               : 'Popup blocked. Open this link: ' + url;
-    }
-  }
+const camBtn=document.getElementById('cam-btn');
 
-  return null; // no tool matched, so go to the Gemini brain
+const imgInput=document.getElementById('img-input');
+
+MEMORY.forEach(m=> add((m.role==='user'?'YOU: ': 'J.A.R.V.I.S: ')+m.text,
+
+m.role==='user'?'user':'ai'));
+
+// ===== 3. TOOLS (THE HANDS) 15 TOOLS =====
+
+async function fetchToolJson(url, options={}, timeoutMs=10000) {
+
+const controller=typeof AbortController==='function'?new AbortController():null;
+
+const timeoutId=controller?setTimeout(()=>controller.abort(),timeoutMs): null;
+
+try{
+
+const response await fetch(url, {...options,... (controller?{signal:controller.signal}:{})});
+async function handleTools(text) {
+
+const t=text.toLowerCase();
+
+if(/^\s*(?:please\s+)?(?:open\s+youtube | youtube\s+open youtube) (?:\s+please)?
+
+[.!?]"\s*$/1.test(text)){ window.open('https://youtube.com','_blank', 'noopener, noreferrer');
+
+return "Opening YouTube, Boss.'; }
+
+if(/^\s*(?:please\s+)?(?:open\s+google google\s+open google) (?:\s+please)?
+
+[.!?]"\s*$/1.test(text)) { window.open('https://google.com','blank', 'noopener, noreferrer');
+
+return "Opening Google, Boss.'; }
+
+const urlCommand=text.match(/^\s*(?:open visit go to)\s+(https?:\/\/\S+)\s*S/1);
+
+if (urlCommand) (
+
+try{
+
+const destination=new URL(urlCommand[1]);
+
+if (destination.protocol='https: '&&destination.protocol!=='http:') return 'Only http and
+
+https links can be opened.';
+
 }
 
-// ===== 4. GEMINI CALLS =====
-async function requestGemini(contents) {
-  if (!API_KEY) { askForKey(); if (!API_KEY) throw new Error('No API key set.'); }
-  let lastErr;
-  for (const m of MODELS) {
-    let data;
-    try {
-      const res = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/" + m + ":generateContent",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-goog-api-key": API_KEY },
-          body: JSON.stringify({ contents })
-        });
-      data = await res.json();
-    } catch (netErr) {
-      lastErr = new Error('Network error. Check your connection.');
-      continue; // try next model
-    }
+window.open(destination.href,'_blank', 'noopener, noreferrer');
 
-    if (data.error) {
-      lastErr = new Error(data.error.message);
-      if (/api key/i.test(data.error.message)) {
-        localStorage.removeItem('jarvis_key'); API_KEY = null;
-        throw new Error('Invalid API key. Reload and enter it again.');
-      }
-      if (RETRYABLE.test(data.error.message)) continue; // try next model
-      throw lastErr; // real error: stop here
-    }
+return 'Opening '+destination.hostname+', Boss.;
 
-    const cand = data.candidates && data.candidates[0];
-    const part = cand && cand.content && cand.content.parts && cand.content.parts[0];
-    if (part && part.text) return part.text;
+)catch(e){return 'That link does not look valid.;)
 
-    lastErr = new Error(
-      (data.promptFeedback && data.promptFeedback.blockReason)
-        ? 'Request blocked: ' + data.promptFeedback.blockReason
-        : 'Empty response from model.');
-  }
-  throw lastErr || new Error('All models failed.');
+if(/^\s*(?:google\s+search/search\s+(?:on\s+)?google) 'Tell me what to search for on Google.'; (?:\s+for)?\s*$/1.test(text)) return
+
+const googleSearch=text.match(/^\s*(?:google\s+search/search\s+(?:on\s+)?google) (?:\s+for)?
+
+\s+(.+?)\s*$/1);
+
+if(googleSearch) (
+
 }
 
-async function askGemini(p) {
-  const bubble = add('J.A.R.V.I.S: Thinking...', 'ai');
-  try {
-    // Try the built-in tools first
-    const toolReply = await tryTools(p);
-    if (toolReply !== null) {
-      MEMORY.push({ role: 'user', text: p });
-      MEMORY.push({ role: 'model', text: toolReply });
-      saveMemory();
-      bubble.innerText = 'J.A.R.V.I.S: ' + toolReply;
-      speak(toolReply);
-      return;
-    }
+const query=googleSearch[1].trim();
 
-    const contents = MEMORY.slice(-CONTEXT_MSGS).map(m => ({ role: m.role, parts: [{ text: m.text }] }));
-    contents.push({ role: 'user', parts: [{ text: p }] });
-    const reply = await requestGemini(contents);
-    MEMORY.push({ role: 'user', text: p });
-    MEMORY.push({ role: 'model', text: reply });
-    saveMemory();
-    bubble.innerText = 'J.A.R.V.I.S: ' + reply;
-    speak(reply);
-  } catch (e) {
-    bubble.innerText = 'J.A.R.V.I.S: ERROR - ' + e.message;
-  }
+if(!query) return 'Tell me what to search for on Google.';
+
+window.open('https://www.google.com/search?
+
+'+encodeURIComponent(query), 'blank', 'noopener, noreferrer');
+
+return 'Searching Google for '+query+', Boss.';
+
+const playMatch=text.match(/^\s*play\s+(.+7)\s*$/1);
+
+const youtubeMatch=text.match(/^\s*youtube(?:\s+search)?(?:\s+for)?\s+(.+?)\s*5/1); const searchYoutubeMatch text.match(/^\s*search\s+(?:on\s+)?youtube(?:\s+for)?\s+ (.+?)\s*$/1);
+
+const videoQuery=(playMatch || youtubeMatch ||search YoutubeMatch)?.[1]?.trim(); if(videoQuery) {
+
+window.open('https://www.youtube.com/results?
+
+return 'Searching YouTube for '+videoQuery+', Boss.';
+
 }
 
-// ===== 5. VISION =====
-if (camBtn && imgInput) {
-  camBtn.onclick = () => imgInput.click();
-  imgInput.onchange = () => {
-    const file = imgInput.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(',')[1];
-      const q = input.value.trim() || 'What do you see? Describe briefly.';
-      add('YOU: [IMAGE] ' + q, 'user');
-      input.value = '';
-      askVision(base64, file.type, q);
-    };
-    reader.readAsDataURL(file);
-    imgInput.value = ''; // allow picking the same file again
-  };
+search_query='+encodeURIComponent(videoQuery), 'blank", "noopener, noreferrer");
+
+const searchMatch=text.match(/^\s*(?:search | look up)\s+(?:for\s+)?(.+?)\s*s/1); if(searchMatch){
+
+const query-searchMatch[1].trim();
+
+if(!query) return 'Tell me what to search for.';
+
+try(
+
+const url='https://en.wikipedia.org/w/api.php?
+
+action query&list=search&srlimit=1&srsearch'+encodeURIComponent(query)+'&format=json&origin=**
+
+const data-await fetchToolJson(url); const result data?.query?.search?.[0];
+
+if(!result) return 'I could not find that, Boss.;
+
+const
+
+snippet=String(result.snippet||").replace(/[^>]*>/g,"").replace(/"/g,'"').replace(/47 39;/g,"").replace(/8/g,'&').replace(/</g,'<').replace(/>/g,'');
+
+return 'Wikipedia summary: '+result.title(snippet?', 'snippet:''); )catch(e){return 'Search error, Boss.'; }
+//===== 3.5. AGENT MODE ENGINE =====
+
+const AGENT TOOLS Object.freeze({
+
+time: async() => handleTools('current time'),
+
+weather: async () => handleTools ('weather'),
+
+news: async () => handle Tools('news'),
+
+crypto: async () => handleTools('bitcoin')
+
+}); const AGENT TOOL_NAMES Object.freeze({ time: 'time', weather: 'weather', news: 'news', crypto: 'crypto' });
+
+function isAgentModeRequest(text=''){
+
+const value=String(text||'');
+
+if(/\b(?:agent(?:\s+mode)?|run\s+(?:the\s+)?agent|use\s+(?: the\s+)?agent)\b/i.test(value))
+
+return true;
+
 }
 
-async function askVision(base64, mime, q) {
-  const bubble = add('J.A.R.V.I.S: Analyzing image...', 'ai');
-  try {
-    const reply = await requestGemini([
-      { role: 'user', parts: [{ text: q }, { inline_data: { mime_type: mime, data: base64 } }] }
-    ]);
-    // Remember the exchange as text so follow-up questions work
-    MEMORY.push({ role: 'user', text: '[Image] ' + q });
-    MEMORY.push({ role: 'model', text: reply });
-    saveMemory();
-    bubble.innerText = 'J.A.R.V.I.S: ' + reply;
-    speak(reply);
-  } catch (e) {
-    bubble.innerText = 'J.A.R.V.I.S: ERROR - ' + e.message;
-  }
+if(/\b(?:briefing research analy[sz]e analysis)\b/i.test(value)) return true;
+
+return /\bplan\b/i.test(value)&&/\b(?:time| weather | news | crypto|bitcoin|btc)\b/i.test(value);
+
+function parseAgent ToolPlan (responseText) {
+
+const text=String(responseText||'').trim().replace(/(?:json)?
+
+\s*/i,'').replace(/\s*$/,'');
+
+const start=text.indexOf('['), end=text.lastIndexOf(']');
+
+if(start<0||end<start) throw new Error('Agent plan format incorrect.');
+
+let parsed JSON.parse(text.slice(start, end+1));
+
+const allowed=new Set(Object.keys(AGENT_TOOLS));
+
+return [...new Set(parsed.filter(item=>typeof
+
+item==='string').map(item=>item.trim().toLowerCase()).filter(item=>allowed.has(item)))];
+
 }
 
-// ===== 6. VOICE =====
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let listening = false;
-if (SR && micBtn) {
-  const rec = new SR();
-  rec.lang = 'en-US';
-  rec.onresult = e => {
-    const t = e.results[0][0].transcript;
-    add('YOU: ' + t, 'user');
-    askGemini(t);
-  };
-  rec.onerror = e => {
-    listening = false;
-    micBtn.innerText = '🎙️';
-    const hints = {
-      'not-allowed': 'Microphone blocked. Open this page in Chrome over https:// or localhost and tap Allow.',
-      'service-not-allowed': 'Speech service blocked here. Open this page in Chrome over https:// or localhost.',
-      'no-speech': 'I heard nothing. Tap the mic and speak again.',
-      'audio-capture': 'No microphone found.',
-      'network': 'Voice needs an internet connection.'
-    };
-    add('SYSTEM: ' + (hints[e.error] || 'Voice error - ' + e.error), 'ai');
-  };
-  rec.onend = () => { listening = false; micBtn.innerText = '🎙️'; };
-  micBtn.onclick = () => {
-    if (listening) { rec.stop(); return; }
-    try { rec.start(); listening = true; micBtn.innerText = 'LISTENING...'; } catch (e) {}
-  };
+async function runAgent (goal) {
+
+add('J.A.R.V.I.S: Agent mode active.', 'ai');
+
+add('J.A.R.V.I.S: Goal analyze chesthunna...', 'ai');
+
+const planPrompt='Select tools from ["time", "weather", "news", "crypto"]. Goal:
+
+'+JSON.stringify(String(goal));
+
+let toolsToRun;
+
+try{
+
+toolsToRun=parseAgent ToolPlan (await callGeminiRaw(planPrompt));
+
+}catch(error) {
+
 }
 
-// Some in-app browsers have no text-to-speech, so check before using it
-const TTS = 'speechSynthesis' in window;
-let voices = [];
-function loadVoices() { if (TTS) voices = speechSynthesis.getVoices(); }
-loadVoices();
-if (TTS) speechSynthesis.onvoiceschanged = loadVoices;
+toolsToRun-fallbackAgentToolPlan(goal);
 
-function speak(text) {
-  const clean = text.replace(/[*_`#>]/g, '').trim(); // don't read markdown symbols aloud
-  if (!clean || !TTS) return; // no speech support: show text only
-  const isTelugu = /[\u0C00-\u0C7F]/.test(clean);
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(clean);
-  u.rate = 1.05;
-  u.pitch = 0.85;
-  u.lang = isTelugu ? 'te-IN' : 'en-US';
-  const voice = voices.find(x => x.lang.startsWith(isTelugu ? 'te' : 'en'));
-  if (voice) u.voice = voice;
-  speechSynthesis.speak(u);
-}
+const results={};
 
-// ===== 7. INPUT & CONTROLS =====
-function sendText() {
-  const t = input.value.trim();
-  if (!t) return;
-  add('YOU: ' + t, 'user');
-  input.value = '';
-  askGemini(t);
-}
-sendBtn.onclick = sendText;
-input.addEventListener('keydown', e => { if (e.key === 'Enter') sendText(); });
+for(let i=0;i<toolsToRun.length; i++) {
 
-if (clearBtn) {
-  clearBtn.onclick = () => {
-    if (!confirm('Erase all saved memory?')) return;
-    MEMORY = [];
-    saveMemory();
-    chat.innerHTML = '';
-    add('SYSTEM: Memory cleared.', 'ai');
-  };
+const tool toolsToRun [i];
+
+add('J.A.R.V.I.S: ['+(1+1)+'/'+toolsToRun. length+'] '+AGENT_TOOL_NAMES [tool]+' tool run
+
+chesthunna...', 'ai');
+
+} try{ results[tool]=await AGENT_TOOLS [tool] (); }catch(e) { results[tool]='Tool error'; }
+
+add('J.A.R.V.I.S: Results combine chesthunna...', 'ai');
+
+const summaryPrompt='Goal: '+JSON.stringify(String(goal))+'. Tool results:
+
+'+JSON.stringify(results)+'. Give concise Telugu/English summary.';
+
 }
 
-// ===== 8. LIVE STATUS PANEL =====
-function setStatus(id, ok, onText, offText) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.className = ok ? 'on' : 'off';
-  el.textContent = '● ' + (ok ? onText : offText);
-}
-function updateStatus() {
-  setStatus('st-net', navigator.onLine, 'ONLINE', 'OFFLINE');
-  setStatus('st-ai', !!API_KEY, 'OPERATIONAL', 'NO API KEY');
-  setStatus('st-voice', !!SR, 'READY', 'UNSUPPORTED');
-  setStatus('st-mem', true, 'ACTIVE (' + MEMORY.length + ')', 'INACTIVE');
-}
-window.addEventListener('online', updateStatus);
-window.addEventListener('offline', updateStatus);
-updateStatus();
+return await callGemini (summaryPrompt);
+
+// ===== 4. GEMINI BRAIN =====
+
+async function callGemini(p){
+
+if(!API_KEY) throw new Error('Gemini API key is missing.');
+
+const contents = MEMORY.slice(-12).map(m=>({role:m.role, parts: [{text:m.text}]}));
+
+contents.push({role: 'user', parts: [[text:p}]});
+
+try{
+
+for(const m of MODELS) {
